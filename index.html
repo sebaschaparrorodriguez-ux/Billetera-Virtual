@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#F1F2EF" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#16181B" media="(prefers-color-scheme: dark)">
+  <meta name="description" content="Lleva las cuentas de tus domicilios: ingresos, gastos y metas.">
+  <title>Billetera Domi</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="css/estilos.css">
+</head>
+<body>
+  <header class="cabecera">
+    <p class="fecha" id="fecha-hoy"></p>
+    <p class="saludo" id="saludo"></p>
+  </header>
+
+  <main>
+    <!-- INICIO -->
+    <section id="vista-inicio" class="vista activa" aria-label="Inicio">
+      <div class="hoy">
+        <p class="hoy-etiqueta">Ganancia de hoy</p>
+        <p class="hoy-cifra" id="hoy-neto">$0</p>
+        <div class="meta">
+          <div class="meta-linea" id="meta-barra" role="progressbar" aria-label="Progreso de la meta diaria" aria-valuemin="0" aria-valuemax="100">
+            <span id="meta-progreso"></span>
+          </div>
+          <p id="meta-texto"></p>
+        </div>
+        <dl class="datos">
+          <div><dt>Domicilios</dt><dd id="hoy-domis">0</dd></div>
+          <div><dt>Ingresos</dt><dd id="hoy-ingresos">$0</dd></div>
+          <div><dt>Gastos</dt><dd id="hoy-gastos">$0</dd></div>
+          <div><dt>Efectivo en mano</dt><dd id="hoy-efectivo">$0</dd></div>
+        </dl>
+      </div>
+
+      <section class="registro" aria-labelledby="t-registro">
+        <h2 id="t-registro">Nuevo domicilio</h2>
+        <div class="opciones" id="chips-tarifa" role="group" aria-label="Precio del domicilio"></div>
+        <div class="opciones opciones-pago" id="chips-metodo" role="group" aria-label="Cómo te pagaron">
+          <button type="button" data-valor="efectivo">Efectivo</button>
+          <button type="button" data-valor="digital">Nequi</button>
+        </div>
+        <button class="btn btn-principal" id="btn-rapido" type="button">
+          Registrar <span id="rapido-monto"></span>
+        </button>
+        <div class="acciones-secundarias">
+          <button class="btn-linea" type="button" data-nuevo="ingreso">Otro ingreso</button>
+          <button class="btn-linea" type="button" data-nuevo="gasto">Registrar gasto</button>
+        </div>
+      </section>
+
+      <h2>Últimos movimientos</h2>
+      <ul class="lista" id="lista-recientes"></ul>
+    </section>
+
+    <!-- HISTORIAL -->
+    <section id="vista-historial" class="vista" aria-label="Historial">
+      <h2 class="titulo-vista">Historial</h2>
+      <div class="filtros">
+        <div class="segmentado" id="filtro-tipo" role="group" aria-label="Tipo de movimiento">
+          <button type="button" data-valor="todos">Todos</button>
+          <button type="button" data-valor="ingreso">Ingresos</button>
+          <button type="button" data-valor="gasto">Gastos</button>
+        </div>
+        <select id="filtro-rango" aria-label="Rango de fechas">
+          <option value="hoy">Hoy</option>
+          <option value="semana" selected>Esta semana</option>
+          <option value="mes">Este mes</option>
+          <option value="todo">Todo</option>
+        </select>
+      </div>
+      <p class="resumen-linea" id="historial-total"></p>
+      <div id="lista-historial"></div>
+    </section>
+
+    <!-- RESUMEN -->
+    <section id="vista-resumen" class="vista" aria-label="Resumen">
+      <h2 class="titulo-vista">Resumen</h2>
+      <div class="segmentado" id="resumen-periodo" role="group" aria-label="Periodo">
+        <button type="button" data-valor="semana">Semana</button>
+        <button type="button" data-valor="mes">Mes</button>
+      </div>
+      <div class="nav-periodo">
+        <button type="button" id="periodo-ant" aria-label="Periodo anterior">‹</button>
+        <span id="periodo-etiqueta"></span>
+        <button type="button" id="periodo-sig" aria-label="Periodo siguiente">›</button>
+      </div>
+
+      <p class="hoy-etiqueta">Ganancia neta</p>
+      <p class="res-cifra" id="res-neto"></p>
+
+      <dl class="datos">
+        <div><dt>Ingresos</dt><dd id="res-ingresos"></dd></div>
+        <div><dt>Gastos</dt><dd id="res-gastos"></dd></div>
+        <div><dt>Domicilios</dt><dd id="res-domis"></dd></div>
+        <div><dt>Promedio por domicilio</dt><dd id="res-promedio"></dd></div>
+        <div class="dato-ancho"><dt>Mejor día</dt><dd id="res-mejor"></dd></div>
+      </dl>
+
+      <h3>Ganancia por día</h3>
+      <div class="grafica" id="grafica-dias"></div>
+      <div class="etiquetas-grafica" id="grafica-etiquetas" aria-hidden="true"></div>
+
+      <h3>Gastos por categoría</h3>
+      <div id="gastos-categoria"></div>
+
+      <h3>Ingresos por plataforma</h3>
+      <div id="ingresos-plataforma"></div>
+    </section>
+
+    <!-- AJUSTES -->
+    <section id="vista-ajustes" class="vista" aria-label="Ajustes">
+      <h2 class="titulo-vista">Ajustes</h2>
+      <form id="form-ajustes" class="formulario">
+        <label>Tu nombre
+          <input name="nombre" maxlength="40" autocomplete="given-name">
+        </label>
+        <label>Meta diaria de ganancia
+          <input name="metaDiaria" class="input-dinero" inputmode="numeric">
+        </label>
+        <label>Precios del domicilio, separados por coma
+          <input name="tarifas" inputmode="numeric" placeholder="4.000, 4.500, 5.000">
+        </label>
+        <label>Plataformas, una por línea
+          <textarea name="plataformas" rows="3"></textarea>
+          <small>La primera es la que se usa al registrar un domicilio.</small>
+        </label>
+        <button class="btn btn-principal" type="submit">Guardar ajustes</button>
+      </form>
+
+      <h3>Respaldo</h3>
+      <p class="nota">Tus datos se guardan solo en este dispositivo. Exporta una copia de vez en cuando por si cambias de celular.</p>
+      <div class="botones-respaldo">
+        <button class="btn-linea" type="button" id="btn-exportar">Exportar respaldo</button>
+        <button class="btn-linea" type="button" id="btn-csv">Exportar a Excel</button>
+        <label class="btn-linea">
+          Importar respaldo
+          <input type="file" id="input-importar" accept="application/json,.json" hidden>
+        </label>
+        <button class="btn-texto peligro" type="button" id="btn-borrar-todo">Borrar todos los movimientos</button>
+      </div>
+    </section>
+  </main>
+
+  <nav class="nav-inferior" aria-label="Secciones">
+    <button type="button" data-vista="inicio" class="activo">Inicio</button>
+    <button type="button" data-vista="historial">Historial</button>
+    <button type="button" data-vista="resumen">Resumen</button>
+    <button type="button" data-vista="ajustes">Ajustes</button>
+  </nav>
+
+  <!-- Formulario de movimiento -->
+  <dialog id="dlg-movimiento">
+    <form id="form-movimiento" class="formulario" novalidate>
+      <div class="dlg-cabecera">
+        <h2 id="dlg-titulo">Nuevo movimiento</h2>
+        <button type="button" class="btn-texto" id="btn-cancelar">Cancelar</button>
+      </div>
+
+      <div class="segmentado" id="form-tipo" role="group" aria-label="Tipo">
+        <button type="button" data-valor="ingreso">Ingreso</button>
+        <button type="button" data-valor="gasto">Gasto</button>
+      </div>
+
+      <label>Monto
+        <input name="monto" class="input-dinero input-grande" inputmode="numeric" placeholder="0" required>
+      </label>
+      <label id="campo-propina">Propina
+        <input name="propina" class="input-dinero" inputmode="numeric" placeholder="Opcional">
+      </label>
+      <label>Categoría
+        <select name="categoria"></select>
+      </label>
+      <label id="campo-plataforma">Plataforma
+        <select name="plataforma"></select>
+      </label>
+      <fieldset class="radios">
+        <legend>Cómo se pagó</legend>
+        <label><input type="radio" name="metodo" value="efectivo" checked> Efectivo</label>
+        <label><input type="radio" name="metodo" value="digital"> Nequi</label>
+      </fieldset>
+      <label>Fecha y hora
+        <input type="datetime-local" name="fecha" required>
+      </label>
+      <label>Nota
+        <input name="nota" maxlength="120" placeholder="Opcional">
+      </label>
+      <p class="error" id="form-error" role="alert"></p>
+
+      <button type="submit" class="btn btn-principal">Guardar</button>
+      <button type="button" class="btn-texto peligro" id="btn-eliminar">Eliminar movimiento</button>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" aria-live="polite">
+    <span id="toast-texto"></span>
+    <button type="button" id="toast-deshacer">Deshacer</button>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

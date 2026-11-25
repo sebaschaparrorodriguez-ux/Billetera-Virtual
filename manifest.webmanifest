@@ -1,0 +1,15 @@
+{
+  "name": "Billetera Domi",
+  "short_name": "Billetera",
+  "description": "Finanzas para domiciliarios: ingresos, gastos y metas diarias.",
+  "lang": "es-CO",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F1F2EF",
+  "theme_color": "#F1F2EF",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
