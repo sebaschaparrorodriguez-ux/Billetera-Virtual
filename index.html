@@ -33,13 +33,25 @@
           </div>
           <p id="meta-texto"></p>
         </div>
-        <dl class="datos">
+        <dl class="datos datos-3">
           <div><dt>Domicilios</dt><dd id="hoy-domis">0</dd></div>
           <div><dt>Ingresos</dt><dd id="hoy-ingresos">$0</dd></div>
           <div><dt>Gastos</dt><dd id="hoy-gastos">$0</dd></div>
-          <div><dt>Efectivo en mano</dt><dd id="hoy-efectivo">$0</dd></div>
         </dl>
       </div>
+
+      <section class="total" aria-labelledby="t-total">
+        <div class="total-cabecera">
+          <h2 id="t-total">Dinero total</h2>
+          <button type="button" class="btn-texto" id="btn-editar-base">Editar base</button>
+        </div>
+        <p class="total-cifra" id="total-dinero">$0</p>
+        <dl class="total-partes">
+          <div><dt>Efectivo</dt><dd id="total-efectivo">$0</dd></div>
+          <div><dt>Nequi</dt><dd id="total-nequi">$0</dd></div>
+        </dl>
+        <p class="total-nota" id="total-nota"></p>
+      </section>
 
       <section class="registro" aria-labelledby="t-registro">
         <h2 id="t-registro">Nuevo domicilio</h2>
@@ -119,7 +131,42 @@
     <!-- AJUSTES -->
     <section id="vista-ajustes" class="vista" aria-label="Ajustes">
       <h2 class="titulo-vista">Ajustes</h2>
+
+      <section class="cuenta" id="seccion-cuenta" aria-labelledby="t-cuenta" hidden>
+        <h3 id="t-cuenta">Cuenta</h3>
+        <div id="cuenta-inactiva">
+          <p class="nota">Crea una cuenta para guardar tus movimientos en la nube y verlos desde cualquier celular o computador.</p>
+          <div class="acciones-secundarias">
+            <button class="btn-linea" type="button" data-cuenta="registro">Crear cuenta</button>
+            <button class="btn-linea" type="button" data-cuenta="entrar">Iniciar sesión</button>
+          </div>
+        </div>
+        <div id="cuenta-activa" hidden>
+          <p class="cuenta-correo" id="cuenta-correo"></p>
+          <p class="estado-sync" id="estado-sync"></p>
+          <button class="btn-texto" type="button" id="btn-salir">Cerrar sesión</button>
+        </div>
+      </section>
+
       <form id="form-ajustes" class="formulario">
+        <fieldset class="grupo-campos" id="base">
+          <legend>Dinero base</legend>
+          <p class="nota">Lo que tenías cuando empezaste a llevar las cuentas. El dinero total suma esta base y todo lo que entra, y resta lo que sale desde esa fecha.</p>
+          <div class="campos-dobles">
+            <label>En efectivo
+              <input name="baseEfectivo" class="input-dinero" inputmode="numeric" placeholder="0">
+            </label>
+            <label>En Nequi
+              <input name="baseNequi" class="input-dinero" inputmode="numeric" placeholder="0">
+            </label>
+          </div>
+          <label>Desde
+            <input type="date" name="baseFecha">
+          </label>
+        </fieldset>
+
+        <fieldset class="grupo-campos">
+        <legend>Preferencias</legend>
         <label>Tu nombre
           <input name="nombre" maxlength="40" autocomplete="given-name">
         </label>
@@ -133,6 +180,7 @@
           <textarea name="plataformas" rows="3"></textarea>
           <small>La primera es la que se usa al registrar un domicilio.</small>
         </label>
+        </fieldset>
         <button class="btn btn-principal" type="submit">Guardar ajustes</button>
       </form>
 
@@ -200,11 +248,35 @@
     </form>
   </dialog>
 
+  <!-- Crear cuenta / iniciar sesión -->
+  <dialog id="dlg-cuenta">
+    <form id="form-cuenta" class="formulario" novalidate>
+      <div class="dlg-cabecera">
+        <h2 id="cuenta-titulo">Crear cuenta</h2>
+        <button type="button" class="btn-texto" id="cuenta-cancelar">Cancelar</button>
+      </div>
+      <label id="campo-cuenta-nombre">Tu nombre
+        <input name="nombre" maxlength="40" autocomplete="given-name">
+      </label>
+      <label>Correo
+        <input name="correo" type="email" autocomplete="email" inputmode="email" required>
+      </label>
+      <label>Contraseña
+        <input name="clave" type="password" minlength="6" autocomplete="new-password" required>
+      </label>
+      <p class="error" id="cuenta-error" role="alert"></p>
+      <button type="submit" class="btn btn-principal" id="cuenta-enviar">Crear cuenta</button>
+      <button type="button" class="btn-texto" id="cuenta-alternar">Ya tengo cuenta</button>
+      <button type="button" class="btn-texto" id="cuenta-recuperar" hidden>Olvidé mi contraseña</button>
+    </form>
+  </dialog>
+
   <div class="toast" id="toast" role="status" aria-live="polite">
     <span id="toast-texto"></span>
     <button type="button" id="toast-deshacer">Deshacer</button>
   </div>
 
   <script src="js/app.js"></script>
+  <script type="module" src="js/nube.js"></script>
 </body>
 </html>

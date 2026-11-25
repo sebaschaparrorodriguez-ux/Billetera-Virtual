@@ -130,6 +130,30 @@ main {
 .datos dt { font-size: 0.8rem; color: var(--lapiz); }
 .datos dd { margin: 2px 0 0; font-size: 1.1rem; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
+/* Variante de tres columnas (Inicio) */
+.datos-3 { grid-template-columns: repeat(3, 1fr); }
+.datos-3 > div:nth-child(n) { padding: 12px 10px; border-left: 1px solid var(--linea); }
+.datos-3 > div:first-child { padding-left: 0; border-left: 0; }
+
+/* ---------- Dinero total ---------- */
+.total { margin-top: 32px; }
+.total-cabecera { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.total-cabecera h2 { margin: 0; }
+.total-cabecera .btn-texto { padding: 4px 0; font-size: 0.875rem; }
+.total-cifra {
+  margin-top: 6px;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  font-variant-numeric: tabular-nums;
+}
+.total-cifra.neg { color: var(--gasto); }
+.total-partes { display: flex; gap: 28px; margin: 10px 0 0; }
+.total-partes dt { font-size: 0.8rem; color: var(--lapiz); }
+.total-partes dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.total-nota { margin-top: 10px; font-size: 0.82rem; color: var(--lapiz); }
+
 /* ---------- Registro de domicilio ---------- */
 .registro h2 { margin-top: 36px; margin-bottom: 14px; }
 
@@ -354,6 +378,28 @@ textarea { resize: vertical; }
 }
 .radios input { width: auto; min-height: 0; accent-color: var(--tinta); margin: 0; }
 .radios label:has(input:checked) { border-color: var(--tinta); }
+
+.grupo-campos { border: none; margin: 0 0 8px; padding: 0; display: grid; gap: 12px; }
+.grupo-campos legend { padding: 0; margin-bottom: 4px; font-size: 0.95rem; font-weight: 600; color: var(--tinta); }
+.grupo-campos .nota { margin: 0; }
+.campos-dobles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+/* ---------- Cuenta ---------- */
+.cuenta { margin-bottom: 32px; padding-bottom: 24px; border-bottom: 1px solid var(--linea); }
+.cuenta h3 { margin-top: 0; }
+.cuenta-correo { font-weight: 600; overflow-wrap: anywhere; }
+.estado-sync { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: 0.875rem; color: var(--lapiz); }
+.estado-sync::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--ingreso);
+}
+.estado-sync.pendiente::before { background: var(--lapiz); }
+#btn-salir { padding-left: 0; margin-top: 8px; }
+#cuenta-alternar, #cuenta-recuperar { justify-self: center; }
 
 .error { color: var(--gasto); font-size: 0.875rem; min-height: 1.2em; margin-top: -8px; }
 .nota { color: var(--lapiz); font-size: 0.9rem; margin-bottom: 14px; }

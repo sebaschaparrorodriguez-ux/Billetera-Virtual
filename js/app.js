@@ -6,6 +6,8 @@
 const CLAVE_STORAGE = 'billetera-virtual:v1';
 // Nombre anterior de la app; sus datos se pasan a la clave nueva la primera vez.
 const CLAVE_ANTERIOR = 'billetera-domi:v1';
+// Última cuenta con sesión iniciada en este dispositivo.
+const CLAVE_CUENTA = 'billetera-virtual:cuenta';
 
 const CATEGORIAS = {
   ingreso: ['Domicilio', 'Propina', 'Bono / incentivo', 'Otro ingreso'],
@@ -19,6 +21,10 @@ const AJUSTES_BASE = {
   tarifaElegida: 4000,
   metodoElegido: 'efectivo',
   plataformas: ['Rappi', 'DiDi Food', 'Particular'],
+  // Dinero con el que se empezó a llevar las cuentas.
+  baseEfectivo: 0,
+  baseNequi: 0,
+  baseFecha: '',
 };
 
 const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
@@ -57,6 +63,7 @@ const sumarDias = (fecha, n) => {
 const capitalizar = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const fechaLarga = (clave) =>
   aFecha(clave).toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' });
+const fechaCorta = (clave) => aFecha(clave).toLocaleDateString('es-CO', { day: 'numeric', month: 'long' });
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -113,50 +120,151 @@ function normalizarAjustes(a = {}) {
     tarifaElegida: tarifas.includes(elegida) ? elegida : tarifas[0],
     metodoElegido: a.metodoElegido === 'digital' ? 'digital' : 'efectivo',
     plataformas: plataformas.length ? plataformas : [...AJUSTES_BASE.plataformas],
+    baseEfectivo: Math.max(0, Math.round(Number(a.baseEfectivo)) || 0),
+    baseNequi: Math.max(0, Math.round(Number(a.baseNequi)) || 0),
+    baseFecha: typeof a.baseFecha === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(a.baseFecha) ? a.baseFecha : '',
   };
 }
 
-function cargar() {
+/* ---------- Almacenamiento local ---------- */
+// Sin cuenta se usa la clave de siempre; cada cuenta tiene su propia copia local.
+const claveDatos = (c) => (c ? `${CLAVE_STORAGE}:u:${c.uid}` : CLAVE_STORAGE);
+// Cambios hechos mientras la nube no estaba lista; se envían al conectar.
+const clavePendientes = (c) => `${claveDatos(c)}:pendientes`;
+
+function leerJSON(clave) {
   try {
-    const datos = JSON.parse(localStorage.getItem(CLAVE_STORAGE) ?? localStorage.getItem(CLAVE_ANTERIOR));
-    if (datos && Array.isArray(datos.movimientos)) {
-      return {
-        movimientos: datos.movimientos.map(normalizarMovimiento).filter(Boolean),
-        ajustes: normalizarAjustes(datos.ajustes),
-      };
-    }
-  } catch (e) {
-    console.warn('No se pudieron leer los datos guardados', e);
+    return JSON.parse(localStorage.getItem(clave));
+  } catch {
+    return null;
+  }
+}
+
+function leerCuentaGuardada() {
+  const c = leerJSON(CLAVE_CUENTA);
+  return c && typeof c.uid === 'string' && c.uid ? { uid: c.uid, correo: String(c.correo || '') } : null;
+}
+
+function cargar(c) {
+  const datos = c ? leerJSON(claveDatos(c)) : (leerJSON(CLAVE_STORAGE) ?? leerJSON(CLAVE_ANTERIOR));
+  if (datos && Array.isArray(datos.movimientos)) {
+    return {
+      movimientos: datos.movimientos.map(normalizarMovimiento).filter(Boolean),
+      ajustes: normalizarAjustes(datos.ajustes),
+    };
   }
   return { movimientos: [], ajustes: normalizarAjustes() };
 }
 
-function guardar() {
+function guardarLocal() {
   try {
-    localStorage.setItem(CLAVE_STORAGE, JSON.stringify(estado));
+    localStorage.setItem(claveDatos(cuenta), JSON.stringify(estado));
   } catch (e) {
     console.error(e);
     mostrarToast('No se pudo guardar. Exporta un respaldo desde Ajustes.');
   }
 }
 
-let estado = cargar();
+let cuenta = leerCuentaGuardada();
+let estado = cargar(cuenta);
 let respaldoDeshacer = null;
+const sincronizacion = { pendiente: false };
+
+/* ---------- Sincronización con la nube (ver js/nube.js) ---------- */
+const nubeConectada = () => Boolean(cuenta && window.Nube?.conectada);
+
+function errorNube(e) {
+  console.error(e);
+  mostrarToast(e?.code === 'permission-denied'
+    ? 'La nube rechazó el cambio. Revisa las reglas de Firestore.'
+    : 'No se pudo guardar en la nube.');
+}
+
+function leerCola() {
+  const cola = leerJSON(clavePendientes(cuenta));
+  return {
+    poner: cola?.poner && typeof cola.poner === 'object' ? cola.poner : {},
+    quitar: Array.isArray(cola?.quitar) ? cola.quitar : [],
+    ajustes: Boolean(cola?.ajustes),
+  };
+}
+
+function escribirCola(cola) {
+  try {
+    localStorage.setItem(clavePendientes(cuenta), JSON.stringify(cola));
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+function enviarMovimientos(poner, quitar) {
+  if (!cuenta || (!poner.length && !quitar.length)) return;
+  if (nubeConectada()) {
+    window.Nube.guardarMovimientos(poner, quitar).catch(errorNube);
+    return;
+  }
+  const cola = leerCola();
+  poner.forEach((m) => {
+    cola.poner[m.id] = m;
+    cola.quitar = cola.quitar.filter((id) => id !== m.id);
+  });
+  quitar.forEach((id) => {
+    delete cola.poner[id];
+    if (!cola.quitar.includes(id)) cola.quitar.push(id);
+  });
+  escribirCola(cola);
+}
+
+function enviarAjustes() {
+  if (!cuenta) return;
+  if (nubeConectada()) {
+    window.Nube.guardarAjustes(estado.ajustes).catch(errorNube);
+    return;
+  }
+  escribirCola({ ...leerCola(), ajustes: true });
+}
+
+function vaciarCola() {
+  const cola = leerCola();
+  localStorage.removeItem(clavePendientes(cuenta));
+  const poner = Object.values(cola.poner).map(normalizarMovimiento).filter(Boolean);
+  enviarMovimientos(poner, cola.quitar);
+  if (cola.ajustes) enviarAjustes();
+}
+
+/** Compara dos listas y envía a la nube solo lo que cambió. */
+function sincronizarMovimientos(antes, despues) {
+  if (!cuenta) return;
+  const previos = new Map(antes.map((m) => [m.id, JSON.stringify(m)]));
+  const actuales = new Set(despues.map((m) => m.id));
+  const poner = despues.filter((m) => previos.get(m.id) !== JSON.stringify(m));
+  const quitar = antes.filter((m) => !actuales.has(m.id)).map((m) => m.id);
+  enviarMovimientos(poner, quitar);
+}
+
+function guardarAjustes() {
+  guardarLocal();
+  enviarAjustes();
+}
 
 /** Aplica un cambio a los movimientos guardando una copia para poder deshacerlo. */
 function cambiarMovimientos(mutacion, mensaje) {
-  respaldoDeshacer = estado.movimientos.map((m) => ({ ...m }));
+  const antes = estado.movimientos.map((m) => ({ ...m }));
+  respaldoDeshacer = antes;
   mutacion();
-  guardar();
+  guardarLocal();
+  sincronizarMovimientos(antes, estado.movimientos);
   renderTodo();
   mostrarToast(mensaje, true);
 }
 
 function deshacer() {
   if (!respaldoDeshacer) return;
+  const antes = estado.movimientos;
   estado.movimientos = respaldoDeshacer;
   respaldoDeshacer = null;
-  guardar();
+  guardarLocal();
+  sincronizarMovimientos(antes, estado.movimientos);
   renderTodo();
   mostrarToast('Cambio deshecho');
 }
@@ -220,6 +328,20 @@ function calcularTotales(movs) {
   return t;
 }
 
+/** Dinero base + todo lo que entró − todo lo que salió desde la fecha de la base. */
+function calcularDineroTotal() {
+  const { baseEfectivo, baseNequi, baseFecha } = estado.ajustes;
+  const r = { efectivo: baseEfectivo, nequi: baseNequi };
+  for (const m of estado.movimientos) {
+    if (baseFecha && diaDe(m) < baseFecha) continue;
+    const valor = (m.tipo === 'ingreso' ? 1 : -1) * totalMov(m);
+    if (m.metodo === 'efectivo') r.efectivo += valor;
+    else r.nequi += valor;
+  }
+  r.total = r.efectivo + r.nequi;
+  return r;
+}
+
 /* =========================================================
    Render
    ========================================================= */
@@ -273,7 +395,6 @@ function renderInicio() {
   $('#hoy-ingresos').textContent = pesos(t.ingresos);
   $('#hoy-gastos').textContent = pesos(t.gastos);
   $('#hoy-domis').textContent = t.domicilios;
-  $('#hoy-efectivo').textContent = pesos(t.efectivo);
 
   const barra = $('#meta-barra');
   if (meta > 0) {
@@ -291,6 +412,7 @@ function renderInicio() {
   }
 
   renderRegistroRapido();
+  renderTotal();
 
   const lista = $('#lista-recientes');
   lista.replaceChildren();
@@ -316,6 +438,21 @@ function renderRegistroRapido() {
   activarSegmentado($('#chips-metodo'), metodoElegido);
   $('#rapido-monto').textContent =
     `${pesos(tarifaElegida)} ${metodoElegido === 'efectivo' ? 'en efectivo' : 'por Nequi'}`;
+}
+
+function renderTotal() {
+  const d = calcularDineroTotal();
+  const a = estado.ajustes;
+  const poner = (sel, valor) => {
+    $(sel).textContent = pesos(valor);
+    $(sel).classList.toggle('neg', valor < 0);
+  };
+  poner('#total-dinero', d.total);
+  poner('#total-efectivo', d.efectivo);
+  poner('#total-nequi', d.nequi);
+  $('#total-nota').textContent = a.baseFecha
+    ? `Con una base de ${pesos(a.baseEfectivo + a.baseNequi)} desde el ${fechaCorta(a.baseFecha)}.`
+    : 'Escribe el dinero con el que empezaste para que el total sea exacto.';
 }
 
 const filtrosHistorial = { tipo: 'todos' };
@@ -453,6 +590,30 @@ function renderAjustes() {
   f.metaDiaria.value = formatoMiles(a.metaDiaria);
   f.tarifas.value = a.tarifas.map(formatoMiles).join(', ');
   f.plataformas.value = a.plataformas.join('\n');
+  f.baseEfectivo.value = formatoMiles(a.baseEfectivo);
+  f.baseNequi.value = formatoMiles(a.baseNequi);
+  f.baseFecha.value = a.baseFecha || claveDia(new Date());
+}
+
+function renderCuenta() {
+  const disponible = Boolean(window.Nube?.disponible);
+  $('#seccion-cuenta').hidden = !disponible && !cuenta;
+  $('#cuenta-inactiva').hidden = Boolean(cuenta);
+  $('#cuenta-activa').hidden = !cuenta;
+  if (!cuenta) return;
+
+  $('#cuenta-correo').textContent = cuenta.correo;
+  let texto = 'Todo guardado en la nube.';
+  let pendiente = false;
+  if (!nubeConectada()) {
+    texto = 'Conectando con la nube…';
+    pendiente = true;
+  } else if (sincronizacion.pendiente) {
+    texto = 'Hay cambios esperando señal para subirse.';
+    pendiente = true;
+  }
+  $('#estado-sync').textContent = texto;
+  $('#estado-sync').classList.toggle('pendiente', pendiente);
 }
 
 function renderTodo() {
@@ -460,6 +621,7 @@ function renderTodo() {
   renderInicio();
   renderHistorial();
   renderResumen();
+  renderCuenta();
 }
 
 /* =========================================================
@@ -647,9 +809,12 @@ async function importarJSON(archivo) {
       (descartados ? ` (${descartados} inválido(s) se ignorarán)` : '') +
       '.\n\nEsto REEMPLAZA los datos actuales de este dispositivo. ¿Continuar?');
     if (!ok) return;
+    const antes = estado.movimientos;
     estado = { movimientos, ajustes: normalizarAjustes(datos.ajustes) };
     respaldoDeshacer = null;
-    guardar();
+    guardarLocal();
+    sincronizarMovimientos(antes, estado.movimientos);
+    enviarAjustes();
     renderTodo();
     renderAjustes();
     mostrarToast('Respaldo importado');
@@ -658,6 +823,214 @@ async function importarJSON(archivo) {
     mostrarToast('Ese archivo no es un respaldo de Billetera Virtual');
   }
 }
+
+/* =========================================================
+   Cuenta (registro, inicio y cierre de sesión)
+   ========================================================= */
+const ERRORES_CUENTA = {
+  'auth/email-already-in-use': 'Ya existe una cuenta con ese correo. Inicia sesión.',
+  'auth/invalid-email': 'Ese correo no es válido.',
+  'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres.',
+  'auth/invalid-credential': 'Correo o contraseña incorrectos.',
+  'auth/wrong-password': 'Correo o contraseña incorrectos.',
+  'auth/user-not-found': 'No hay una cuenta con ese correo.',
+  'auth/too-many-requests': 'Demasiados intentos. Espera unos minutos y vuelve a intentar.',
+  'auth/network-request-failed': 'No hay conexión. Intenta cuando tengas señal.',
+  'auth/operation-not-allowed': 'El registro con correo no está activado en Firebase.',
+};
+const CORREO_VALIDO = /^[^\s@]+@[^\s@]+$/;
+
+const dlgCuenta = $('#dlg-cuenta');
+const formCuenta = $('#form-cuenta');
+let modoCuenta = 'registro';
+let saliendo = false;
+
+function actualizarDialogoCuenta() {
+  const registro = modoCuenta === 'registro';
+  $('#cuenta-titulo').textContent = registro ? 'Crear cuenta' : 'Iniciar sesión';
+  $('#cuenta-enviar').textContent = registro ? 'Crear cuenta' : 'Iniciar sesión';
+  $('#cuenta-alternar').textContent = registro ? 'Ya tengo cuenta' : 'Crear una cuenta nueva';
+  $('#campo-cuenta-nombre').hidden = !registro;
+  $('#cuenta-recuperar').hidden = registro;
+  formCuenta.clave.autocomplete = registro ? 'new-password' : 'current-password';
+  $('#cuenta-error').textContent = '';
+}
+
+function abrirCuenta(modo) {
+  modoCuenta = modo;
+  formCuenta.clave.value = '';
+  if (!formCuenta.nombre.value) formCuenta.nombre.value = estado.ajustes.nombre;
+  actualizarDialogoCuenta();
+  dlgCuenta.showModal();
+  (modo === 'registro' ? formCuenta.nombre : formCuenta.correo).focus();
+}
+
+async function enviarCuenta(evento) {
+  evento.preventDefault();
+  const correo = formCuenta.correo.value.trim();
+  const clave = formCuenta.clave.value;
+  const error = $('#cuenta-error');
+
+  if (!CORREO_VALIDO.test(correo)) {
+    error.textContent = 'Escribe un correo válido.';
+    return;
+  }
+  if (clave.length < 6) {
+    error.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+    return;
+  }
+  if (!window.Nube?.disponible) {
+    error.textContent = 'Las cuentas no están disponibles ahora. Revisa tu conexión.';
+    return;
+  }
+
+  const boton = $('#cuenta-enviar');
+  boton.disabled = true;
+  error.textContent = '';
+  try {
+    if (modoCuenta === 'registro') {
+      const nombre = formCuenta.nombre.value.trim();
+      if (nombre) {
+        estado.ajustes.nombre = nombre;
+        guardarLocal();
+      }
+      await window.Nube.registrar(correo, clave);
+      mostrarToast('Cuenta creada');
+    } else {
+      await window.Nube.entrar(correo, clave);
+      mostrarToast('Sesión iniciada');
+    }
+    dlgCuenta.close();
+  } catch (e) {
+    console.error(e);
+    error.textContent = ERRORES_CUENTA[e?.code] || 'No se pudo completar. Intenta de nuevo.';
+  } finally {
+    boton.disabled = false;
+  }
+}
+
+async function recuperarClave() {
+  const correo = formCuenta.correo.value.trim();
+  const error = $('#cuenta-error');
+  if (!CORREO_VALIDO.test(correo)) {
+    error.textContent = 'Escribe tu correo y vuelve a tocar "Olvidé mi contraseña".';
+    return;
+  }
+  try {
+    await window.Nube.recuperar(correo);
+    error.textContent = '';
+    mostrarToast('Te enviamos un correo para cambiar la contraseña');
+  } catch (e) {
+    error.textContent = ERRORES_CUENTA[e?.code] || 'No se pudo enviar el correo.';
+  }
+}
+
+async function cerrarSesion() {
+  if (!window.Nube?.disponible) {
+    mostrarToast('Necesitas conexión para cerrar sesión');
+    return;
+  }
+  const aviso = sincronizacion.pendiente
+    ? '\n\nOjo: hay cambios que todavía no se han subido y se van a perder.'
+    : '';
+  if (!confirm(`¿Cerrar sesión en este dispositivo? Tus datos siguen guardados en tu cuenta.${aviso}`)) return;
+  saliendo = true;
+  try {
+    await window.Nube.salir();
+  } catch (e) {
+    saliendo = false;
+    errorNube(e);
+  }
+}
+
+function ofrecerPasarMovimientos(lista) {
+  if (!cuenta) return;
+  const ok = confirm(
+    `Este dispositivo tiene ${lista.length} movimiento(s) guardados sin cuenta.\n\n` +
+    '¿Quieres pasarlos a tu cuenta para verlos en todos tus dispositivos?');
+  if (!ok) return;
+  enviarMovimientos(lista, []);
+  localStorage.removeItem(CLAVE_STORAGE);
+  localStorage.removeItem(CLAVE_ANTERIOR);
+  mostrarToast('Movimientos pasados a tu cuenta');
+}
+
+/* ---------- Puente con js/nube.js ---------- */
+function alIniciarSesion(info) {
+  const nueva = { uid: info.uid, correo: info.correo || '' };
+  const ajustesIniciales = estado.ajustes;
+  let sinCuenta = [];
+  if (cuenta?.uid !== nueva.uid) {
+    if (!cuenta) sinCuenta = estado.movimientos;
+    cuenta = nueva;
+    estado = cargar(cuenta);
+    respaldoDeshacer = null;
+  } else {
+    cuenta = nueva;
+  }
+  try {
+    localStorage.setItem(CLAVE_CUENTA, JSON.stringify(cuenta));
+  } catch (e) {
+    console.error(e);
+  }
+  vaciarCola();
+  renderTodo();
+  renderAjustes();
+  if (sinCuenta.length) setTimeout(() => ofrecerPasarMovimientos(sinCuenta), 400);
+  // Si la cuenta es nueva, la nube usa estos ajustes para crear el perfil.
+  return ajustesIniciales;
+}
+
+function alCerrarSesion() {
+  if (!cuenta) return;
+  // Solo se borra la copia local si la persona cerró sesión a propósito.
+  if (saliendo) {
+    localStorage.removeItem(claveDatos(cuenta));
+    localStorage.removeItem(clavePendientes(cuenta));
+  }
+  localStorage.removeItem(CLAVE_CUENTA);
+  saliendo = false;
+  cuenta = null;
+  estado = cargar(null);
+  respaldoDeshacer = null;
+  sincronizacion.pendiente = false;
+  renderTodo();
+  renderAjustes();
+}
+
+function recibirMovimientos(lista, meta = {}) {
+  if (!cuenta) return;
+  const nuevos = lista.map(normalizarMovimiento).filter(Boolean)
+    .sort((a, b) => a.fecha.localeCompare(b.fecha));
+  const firma = (movs) => JSON.stringify([...movs].sort((a, b) => a.id.localeCompare(b.id)));
+  // Si lo que llega es igual a lo que ya hay (por ejemplo, el eco de un cambio propio), no se toca nada.
+  if (firma(nuevos) !== firma(estado.movimientos)) {
+    estado.movimientos = nuevos;
+    respaldoDeshacer = null;
+    guardarLocal();
+    renderTodo();
+  }
+  sincronizacion.pendiente = Boolean(meta.pendiente);
+  renderCuenta();
+}
+
+function recibirAjustes(datos) {
+  if (!cuenta) return;
+  const nuevos = normalizarAjustes(datos);
+  if (JSON.stringify(nuevos) === JSON.stringify(estado.ajustes)) return;
+  estado.ajustes = nuevos;
+  guardarLocal();
+  renderTodo();
+  if (!$('#form-ajustes').contains(document.activeElement)) renderAjustes();
+}
+
+window.Billetera = {
+  alIniciarSesion,
+  alCerrarSesion,
+  recibirMovimientos,
+  recibirAjustes,
+  nubeLista: renderCuenta,
+};
 
 /* =========================================================
    Toast
@@ -686,15 +1059,36 @@ function iniciar() {
     const b = e.target.closest('button');
     if (!b) return;
     estado.ajustes.tarifaElegida = Number(b.dataset.valor);
-    guardar();
+    guardarAjustes();
     renderRegistroRapido();
   });
   $('#chips-metodo').addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
     estado.ajustes.metodoElegido = b.dataset.valor;
-    guardar();
+    guardarAjustes();
     renderRegistroRapido();
+  });
+
+  // Dinero base
+  $('#btn-editar-base').addEventListener('click', () => {
+    irA('ajustes');
+    $('#base').scrollIntoView({ block: 'start' });
+    $('#form-ajustes').baseEfectivo.focus({ preventScroll: true });
+  });
+
+  // Cuenta
+  $$('[data-cuenta]').forEach((b) => b.addEventListener('click', () => abrirCuenta(b.dataset.cuenta)));
+  formCuenta.addEventListener('submit', enviarCuenta);
+  $('#cuenta-cancelar').addEventListener('click', () => dlgCuenta.close());
+  $('#cuenta-alternar').addEventListener('click', () => {
+    modoCuenta = modoCuenta === 'registro' ? 'entrar' : 'registro';
+    actualizarDialogoCuenta();
+  });
+  $('#cuenta-recuperar').addEventListener('click', recuperarClave);
+  $('#btn-salir').addEventListener('click', cerrarSesion);
+  dlgCuenta.addEventListener('click', (e) => {
+    if (e.target === dlgCuenta) dlgCuenta.close();
   });
   $$('[data-nuevo]').forEach((b) => b.addEventListener('click', () => abrirFormulario(b.dataset.nuevo)));
 
@@ -748,14 +1142,21 @@ function iniciar() {
   $('#form-ajustes').addEventListener('submit', (e) => {
     e.preventDefault();
     const f = e.target;
+    const baseEfectivo = aNumero(f.baseEfectivo.value);
+    const baseNequi = aNumero(f.baseNequi.value);
+    // La fecha de la base solo cuenta si hay una base escrita (o ya había una).
+    const usaBase = baseEfectivo > 0 || baseNequi > 0 || estado.ajustes.baseFecha;
     estado.ajustes = normalizarAjustes({
       ...estado.ajustes,
       nombre: f.nombre.value.trim(),
       metaDiaria: aNumero(f.metaDiaria.value),
       tarifas: f.tarifas.value.split(/[,;\s]+/).map(aNumero),
       plataformas: f.plataformas.value.split(/[\n,]/),
+      baseEfectivo,
+      baseNequi,
+      baseFecha: usaBase ? (f.baseFecha.value || claveDia(new Date())) : '',
     });
-    guardar();
+    guardarAjustes();
     renderTodo();
     renderAjustes();
     mostrarToast('Ajustes guardados');
