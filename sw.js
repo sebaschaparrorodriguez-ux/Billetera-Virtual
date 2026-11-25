@@ -1,5 +1,5 @@
 // Service worker: guarda la app en caché para que funcione sin internet.
-const CACHE = 'billetera-domi-v3';
+const CACHE = 'billetera-virtual-v4';
 const ARCHIVOS = [
   './',
   './index.html',

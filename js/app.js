@@ -3,7 +3,9 @@
 /* =========================================================
    Configuración
    ========================================================= */
-const CLAVE_STORAGE = 'billetera-domi:v1';
+const CLAVE_STORAGE = 'billetera-virtual:v1';
+// Nombre anterior de la app; sus datos se pasan a la clave nueva la primera vez.
+const CLAVE_ANTERIOR = 'billetera-domi:v1';
 
 const CATEGORIAS = {
   ingreso: ['Domicilio', 'Propina', 'Bono / incentivo', 'Otro ingreso'],
@@ -116,7 +118,7 @@ function normalizarAjustes(a = {}) {
 
 function cargar() {
   try {
-    const datos = JSON.parse(localStorage.getItem(CLAVE_STORAGE));
+    const datos = JSON.parse(localStorage.getItem(CLAVE_STORAGE) ?? localStorage.getItem(CLAVE_ANTERIOR));
     if (datos && Array.isArray(datos.movimientos)) {
       return {
         movimientos: datos.movimientos.map(normalizarMovimiento).filter(Boolean),
@@ -611,8 +613,8 @@ function descargar(nombre, contenido, tipo) {
 }
 
 function exportarJSON() {
-  const datos = { app: 'billetera-domi', version: 1, exportado: new Date().toISOString(), ...estado };
-  descargar(`billetera-domi-${claveDia(new Date())}.json`, JSON.stringify(datos, null, 2), 'application/json');
+  const datos = { app: 'billetera-virtual', version: 1, exportado: new Date().toISOString(), ...estado };
+  descargar(`billetera-virtual-${claveDia(new Date())}.json`, JSON.stringify(datos, null, 2), 'application/json');
 }
 
 function exportarCSV() {
@@ -631,7 +633,7 @@ function exportarCSV() {
   });
   // Excel en español usa ";" como separador. El BOM hace que respete las tildes.
   const csv = '﻿' + filas.map((f) => f.map(celda).join(';')).join('\r\n');
-  descargar(`billetera-domi-${claveDia(new Date())}.csv`, csv, 'text/csv;charset=utf-8');
+  descargar(`billetera-virtual-${claveDia(new Date())}.csv`, csv, 'text/csv;charset=utf-8');
 }
 
 async function importarJSON(archivo) {
@@ -653,7 +655,7 @@ async function importarJSON(archivo) {
     mostrarToast('Respaldo importado');
   } catch (e) {
     console.error(e);
-    mostrarToast('Ese archivo no es un respaldo de Billetera Domi');
+    mostrarToast('Ese archivo no es un respaldo de Billetera Virtual');
   }
 }
 

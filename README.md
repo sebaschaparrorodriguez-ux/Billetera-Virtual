@@ -1,4 +1,4 @@
-# Billetera Domi 🛵
+# Billetera Virtual
 
 Aplicación web para llevar las finanzas de un domiciliario: cada domicilio, cada propina y cada gasto, con metas diarias y resúmenes por semana y por mes.
 
